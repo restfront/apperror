@@ -1,3 +1,4 @@
+// Package apperror
 package apperror
 
 import (
@@ -7,30 +8,32 @@ import (
 type ErrorType uint
 
 const (
-	TypeUnknown             ErrorType = iota // 500
-	TypeNotValid                             // 422
-	TypeBadRequest                           // 400
-	TypeUnauthorized                         // 401
-	TypeForbidden                            // 403
-	TypeNotFound                             // 404
-	TypeUnprocessableEntity                  // 422
-	TypeInternal                             // 500
-	TypeMethodNotAllowed                     // 405
-	TypeTooManyRequests                      // 429
+	TypeUnknown              ErrorType = iota // 500
+	TypeNotValid                              // 422
+	TypeBadRequest                            // 400
+	TypeUnauthorized                          // 401
+	TypeForbidden                             // 403
+	TypeNotFound                              // 404
+	TypeUnprocessableEntity                   // 422
+	TypeInternal                              // 500
+	TypeTemporaryUnavailable                  // 503
+	TypeMethodNotAllowed                      // 405
+	TypeTooManyRequests                       // 429
 )
 
 var (
 	defaultMessages = map[ErrorType]string{
-		TypeNotValid:            "Ошибка валидации данных",
-		TypeBadRequest:          "Некорректные данные запроса",
-		TypeUnauthorized:        "Пользователь не авторизован",
-		TypeForbidden:           "Недостаточно прав для выполнения операции",
-		TypeNotFound:            "Ресурс не найден",
-		TypeUnprocessableEntity: "Невозможно обработать запрос",
-		TypeInternal:            "Внутренняя ошибка сервера",
-		TypeMethodNotAllowed:    "Метод не поддерживается",
-		TypeUnknown:             "Неизвестная ошибка",
-		TypeTooManyRequests:     "Превышено допустимое количество запросов",
+		TypeNotValid:             "Ошибка валидации данных",
+		TypeBadRequest:           "Некорректные данные запроса",
+		TypeUnauthorized:         "Пользователь не авторизован",
+		TypeForbidden:            "Недостаточно прав для выполнения операции",
+		TypeNotFound:             "Ресурс не найден",
+		TypeUnprocessableEntity:  "Невозможно обработать запрос",
+		TypeInternal:             "Внутренняя ошибка сервера",
+		TypeTemporaryUnavailable: "Сервис временно недоступен",
+		TypeMethodNotAllowed:     "Метод не поддерживается",
+		TypeUnknown:              "Неизвестная ошибка",
+		TypeTooManyRequests:      "Превышено допустимое количество запросов",
 	}
 )
 
@@ -79,6 +82,8 @@ func (e *AppError) HTTPStatusCode() int {
 		status = http.StatusUnprocessableEntity
 	case TypeInternal:
 		status = http.StatusInternalServerError
+	case TypeTemporaryUnavailable:
+		status = http.StatusServiceUnavailable
 	case TypeMethodNotAllowed:
 		status = http.StatusMethodNotAllowed
 	case TypeTooManyRequests:
@@ -132,6 +137,10 @@ func NewInternal(message string, original error) *AppError {
 	return TypeInternal.New(message, original)
 }
 
+func NewTemporaryUnavailable(message string, original error) *AppError {
+	return TypeTemporaryUnavailable.New(message, original)
+}
+
 func NewUnknown(message string, original error) *AppError {
 	return TypeUnknown.New(message, original)
 }
@@ -170,6 +179,10 @@ func UnprocessableEntity(original error) *AppError {
 
 func Internal(original error) *AppError {
 	return TypeInternal.New("", original)
+}
+
+func TemporaryUnavailable(original error) *AppError {
+	return TypeTemporaryUnavailable.New("", original)
 }
 
 func Unknown(original error) *AppError {

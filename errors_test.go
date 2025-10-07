@@ -199,6 +199,22 @@ func TestNewErrorConstructors(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
+			name:           "NewTemporaryUnavailable with custom message",
+			fn:             NewTemporaryUnavailable,
+			errorType:      TypeTemporaryUnavailable,
+			message:        "Custom temporary unavailable error",
+			expectedMsg:    "Custom temporary unavailable error",
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:           "NewTemporaryUnavailable with default message",
+			fn:             NewTemporaryUnavailable,
+			errorType:      TypeTemporaryUnavailable,
+			message:        "",
+			expectedMsg:    "Сервис временно недоступен",
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
 			name:           "NewMethodNotAllowed with custom message",
 			fn:             NewMethodNotAllowed,
 			errorType:      TypeMethodNotAllowed,
@@ -309,6 +325,13 @@ func TestErrorShortcutFunctions(t *testing.T) {
 			expectedType:   TypeInternal,
 			expectedMsg:    "Внутренняя ошибка сервера",
 			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "TemporaryUnavailable shortcut function",
+			fn:             TemporaryUnavailable,
+			expectedType:   TypeTemporaryUnavailable,
+			expectedMsg:    "Сервис временно недоступен",
+			expectedStatus: http.StatusServiceUnavailable,
 		},
 		{
 			name:           "TooManyRequests shortcut function",
