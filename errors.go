@@ -17,6 +17,7 @@ const (
 	TypeUnprocessableEntity                   // 422
 	TypeInternal                              // 500
 	TypeTemporaryUnavailable                  // 503
+	TypeGatewayTimeout                        // 504
 	TypeMethodNotAllowed                      // 405
 	TypeTooManyRequests                       // 429
 )
@@ -31,6 +32,7 @@ var (
 		TypeUnprocessableEntity:  "Невозможно обработать запрос",
 		TypeInternal:             "Внутренняя ошибка сервера",
 		TypeTemporaryUnavailable: "Сервис временно недоступен",
+		TypeGatewayTimeout:       "Таймаут соединения",
 		TypeMethodNotAllowed:     "Метод не поддерживается",
 		TypeUnknown:              "Неизвестная ошибка",
 		TypeTooManyRequests:      "Превышено допустимое количество запросов",
@@ -84,6 +86,8 @@ func (e *AppError) HTTPStatusCode() int {
 		status = http.StatusInternalServerError
 	case TypeTemporaryUnavailable:
 		status = http.StatusServiceUnavailable
+	case TypeGatewayTimeout:
+		status = http.StatusGatewayTimeout
 	case TypeMethodNotAllowed:
 		status = http.StatusMethodNotAllowed
 	case TypeTooManyRequests:
@@ -141,6 +145,10 @@ func NewTemporaryUnavailable(message string, original error) *AppError {
 	return TypeTemporaryUnavailable.New(message, original)
 }
 
+func NewGatewayTimeout(message string, original error) *AppError {
+	return TypeGatewayTimeout.New(message, original)
+}
+
 func NewUnknown(message string, original error) *AppError {
 	return TypeUnknown.New(message, original)
 }
@@ -183,6 +191,10 @@ func Internal(original error) *AppError {
 
 func TemporaryUnavailable(original error) *AppError {
 	return TypeTemporaryUnavailable.New("", original)
+}
+
+func GatewayTimeout(original error) *AppError {
+	return TypeGatewayTimeout.New("", original)
 }
 
 func Unknown(original error) *AppError {
