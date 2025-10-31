@@ -16,6 +16,8 @@ const (
 	TypeNotFound                              // 404
 	TypeUnprocessableEntity                   // 422
 	TypeInternal                              // 500
+	TypeNotImplemented                        // 501
+	TypeBadGateway                            // 502
 	TypeTemporaryUnavailable                  // 503
 	TypeGatewayTimeout                        // 504
 	TypeMethodNotAllowed                      // 405
@@ -31,6 +33,8 @@ var (
 		TypeNotFound:             "Ресурс не найден",
 		TypeUnprocessableEntity:  "Невозможно обработать запрос",
 		TypeInternal:             "Внутренняя ошибка сервера",
+		TypeNotImplemented:       "Метод не реализован",
+		TypeBadGateway:           "Сервис недоступен",
 		TypeTemporaryUnavailable: "Сервис временно недоступен",
 		TypeGatewayTimeout:       "Таймаут соединения",
 		TypeMethodNotAllowed:     "Метод не поддерживается",
@@ -84,6 +88,10 @@ func (e *AppError) HTTPStatusCode() int {
 		status = http.StatusUnprocessableEntity
 	case TypeInternal:
 		status = http.StatusInternalServerError
+	case TypeNotImplemented:
+		status = http.StatusNotImplemented
+	case TypeBadGateway:
+		status = http.StatusBadGateway
 	case TypeTemporaryUnavailable:
 		status = http.StatusServiceUnavailable
 	case TypeGatewayTimeout:
@@ -161,6 +169,14 @@ func NewTooManyRequests(message string, original error) *AppError {
 	return TypeTooManyRequests.New(message, original)
 }
 
+func NewNotImplemented(message string, original error) *AppError {
+	return TypeNotImplemented.New(message, original)
+}
+
+func NewBadGateway(message string, original error) *AppError {
+	return TypeBadGateway.New(message, original)
+}
+
 func Validation(original error) *AppError {
 	return TypeNotValid.New("", original)
 }
@@ -187,6 +203,14 @@ func UnprocessableEntity(original error) *AppError {
 
 func Internal(original error) *AppError {
 	return TypeInternal.New("", original)
+}
+
+func NotImplemented(original error) *AppError {
+	return TypeNotImplemented.New("", original)
+}
+
+func BadGateway(original error) *AppError {
+	return TypeBadGateway.New("", original)
 }
 
 func TemporaryUnavailable(original error) *AppError {
