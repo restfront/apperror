@@ -1,10 +1,14 @@
-// Package apperror
+// Package apperror предоставляет типизированные ошибки приложения
+// с поддержкой кодов ошибок, метаданных и HTTP-статусов.
 package apperror
 
 import (
+	"maps"
 	"net/http"
+	"time"
 )
 
+// ErrorType представляет категорию ошибки.
 type ErrorType uint
 
 const (
@@ -23,6 +27,31 @@ const (
 	TypeMethodNotAllowed                      // 405
 	TypeTooManyRequests                       // 429
 )
+
+var errorTypeNames = map[ErrorType]string{
+	TypeUnknown:              "Unknown",
+	TypeNotValid:             "NotValid",
+	TypeBadRequest:           "BadRequest",
+	TypeUnauthorized:         "Unauthorized",
+	TypeForbidden:            "Forbidden",
+	TypeNotFound:             "NotFound",
+	TypeUnprocessableEntity:  "UnprocessableEntity",
+	TypeInternal:             "Internal",
+	TypeNotImplemented:       "NotImplemented",
+	TypeBadGateway:           "BadGateway",
+	TypeTemporaryUnavailable: "TemporaryUnavailable",
+	TypeGatewayTimeout:       "GatewayTimeout",
+	TypeMethodNotAllowed:     "MethodNotAllowed",
+	TypeTooManyRequests:      "TooManyRequests",
+}
+
+// String возвращает строковое представление типа ошибки.
+func (eType ErrorType) String() string {
+	if name, ok := errorTypeNames[eType]; ok {
+		return name
+	}
+	return "Unknown"
+}
 
 var (
 	defaultMessages = map[ErrorType]string{
@@ -43,10 +72,17 @@ var (
 	}
 )
 
+// AppError представляет ошибку приложения с типом, кодом и метаданными.
 type AppError struct {
 	errorType ErrorType
+	code      ErrorCode
 	message   string
 	original  error
+	details   map[string]any
+	timestamp time.Time
+	requestID string
+	fields    []FieldError
+	stack     []uintptr
 }
 
 func (e *AppError) Error() string {
@@ -110,11 +146,75 @@ func (e *AppError) WithMessage(message string) *AppError {
 	return e
 }
 
+// Code возвращает машиночитаемый код ошибки.
+func (e *AppError) Code() ErrorCode {
+	return e.code
+}
+
+// WithCode устанавливает машиночитаемый код ошибки.
+func (e *AppError) WithCode(code ErrorCode) *AppError {
+	e.code = code
+	return e
+}
+
+// Details возвращает дополнительные метаданные ошибки.
+func (e *AppError) Details() map[string]any {
+	return e.details
+}
+
+// Detail возвращает значение метаданных по ключу.
+func (e *AppError) Detail(key string) (any, bool) {
+	if e.details == nil {
+		return nil, false
+	}
+	v, ok := e.details[key]
+	return v, ok
+}
+
+// WithDetail добавляет одно поле метаданных.
+func (e *AppError) WithDetail(key string, value any) *AppError {
+	if e.details == nil {
+		e.details = make(map[string]any)
+	}
+	e.details[key] = value
+	return e
+}
+
+// WithDetails добавляет несколько полей метаданных.
+func (e *AppError) WithDetails(details map[string]any) *AppError {
+	if e.details == nil {
+		e.details = make(map[string]any)
+	}
+	maps.Copy(e.details, details)
+	return e
+}
+
+// Timestamp возвращает время создания ошибки.
+func (e *AppError) Timestamp() time.Time {
+	return e.timestamp
+}
+
+// RequestID возвращает идентификатор запроса.
+func (e *AppError) RequestID() string {
+	return e.requestID
+}
+
+// WithRequestID устанавливает идентификатор запроса.
+func (e *AppError) WithRequestID(requestID string) *AppError {
+	e.requestID = requestID
+	return e
+}
+
 func (eType ErrorType) New(message string, original error) *AppError {
 	if message == "" {
 		message = defaultMessages[eType]
 	}
-	return &AppError{errorType: eType, message: message, original: original}
+	return &AppError{
+		errorType: eType,
+		message:   message,
+		original:  original,
+		timestamp: time.Now(),
+	}
 }
 
 func NewError(eType ErrorType, message string, original error) *AppError {

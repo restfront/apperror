@@ -1,9 +1,11 @@
 package apperror
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -373,4 +375,454 @@ func TestErrorShortcutFunctions(t *testing.T) {
 			assert.Equal(t, errOriginal, err.Unwrap(), "unexpected original error")
 		})
 	}
+}
+
+func TestErrorCode(t *testing.T) {
+	t.Run("ErrorCode String method", func(t *testing.T) {
+		code := CodeDeviceNotFound
+		assert.Equal(t, "device_not_found", code.String())
+	})
+
+	t.Run("ErrorCode IsEmpty", func(t *testing.T) {
+		var emptyCode ErrorCode
+		assert.True(t, emptyCode.IsEmpty())
+		assert.False(t, CodeDeviceNotFound.IsEmpty())
+	})
+}
+
+func TestAppErrorWithCode(t *testing.T) {
+	t.Run("WithCode sets error code", func(t *testing.T) {
+		err := NotFound(errOriginal).WithCode(CodeDeviceNotFound)
+
+		assert.Equal(t, CodeDeviceNotFound, err.Code())
+		assert.Equal(t, TypeNotFound, err.Type())
+	})
+
+	t.Run("Code returns empty for error without code", func(t *testing.T) {
+		err := NotFound(errOriginal)
+
+		assert.True(t, err.Code().IsEmpty())
+	})
+
+	t.Run("Fluent API chain", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено")
+
+		assert.Equal(t, CodeDeviceNotFound, err.Code())
+		assert.Equal(t, "Устройство не найдено", err.Message())
+		assert.Equal(t, TypeNotFound, err.Type())
+		assert.Equal(t, http.StatusNotFound, err.HTTPStatusCode())
+	})
+}
+
+func TestAppErrorDetails(t *testing.T) {
+	t.Run("WithDetail adds single detail", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithDetail("device_id", "abc-123")
+
+		details := err.Details()
+		assert.Equal(t, "abc-123", details["device_id"])
+	})
+
+	t.Run("WithDetails adds multiple details", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithDetails(map[string]any{
+				"device_id": "abc-123",
+				"user_id":   "user-456",
+			})
+
+		details := err.Details()
+		assert.Equal(t, "abc-123", details["device_id"])
+		assert.Equal(t, "user-456", details["user_id"])
+	})
+
+	t.Run("Detail returns value and ok", func(t *testing.T) {
+		err := NotFound(errOriginal).WithDetail("key", "value")
+
+		val, ok := err.Detail("key")
+		assert.True(t, ok)
+		assert.Equal(t, "value", val)
+
+		_, ok = err.Detail("nonexistent")
+		assert.False(t, ok)
+	})
+
+	t.Run("Details returns nil for error without details", func(t *testing.T) {
+		err := NotFound(errOriginal)
+
+		assert.Nil(t, err.Details())
+	})
+
+	t.Run("WithDetail and WithDetails can be chained", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithDetail("key1", "value1").
+			WithDetails(map[string]any{"key2": "value2"}).
+			WithDetail("key3", "value3")
+
+		details := err.Details()
+		assert.Equal(t, "value1", details["key1"])
+		assert.Equal(t, "value2", details["key2"])
+		assert.Equal(t, "value3", details["key3"])
+	})
+}
+
+func TestAppErrorTimestamp(t *testing.T) {
+	t.Run("Timestamp is set on creation", func(t *testing.T) {
+		before := time.Now()
+		err := NotFound(errOriginal)
+		after := time.Now()
+
+		assert.False(t, err.Timestamp().IsZero())
+		assert.True(t, err.Timestamp().After(before) || err.Timestamp().Equal(before))
+		assert.True(t, err.Timestamp().Before(after) || err.Timestamp().Equal(after))
+	})
+}
+
+func TestAppErrorRequestID(t *testing.T) {
+	t.Run("WithRequestID sets request ID", func(t *testing.T) {
+		err := NotFound(errOriginal).WithRequestID("req-123")
+
+		assert.Equal(t, "req-123", err.RequestID())
+	})
+
+	t.Run("RequestID returns empty for error without request ID", func(t *testing.T) {
+		err := NotFound(errOriginal)
+
+		assert.Empty(t, err.RequestID())
+	})
+}
+
+func TestCompleteFluentAPI(t *testing.T) {
+	t.Run("Complete fluent API usage", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено").
+			WithRequestID("req-abc-123").
+			WithDetail("device_id", "dev-456").
+			WithDetails(map[string]any{
+				"user_id":    "user-789",
+				"ip_address": "192.168.1.1",
+			})
+
+		assert.Equal(t, TypeNotFound, err.Type())
+		assert.Equal(t, CodeDeviceNotFound, err.Code())
+		assert.Equal(t, "Устройство не найдено", err.Message())
+		assert.Equal(t, http.StatusNotFound, err.HTTPStatusCode())
+		assert.Equal(t, "req-abc-123", err.RequestID())
+		assert.Equal(t, errOriginal, err.Unwrap())
+
+		details := err.Details()
+		assert.Equal(t, "dev-456", details["device_id"])
+		assert.Equal(t, "user-789", details["user_id"])
+		assert.Equal(t, "192.168.1.1", details["ip_address"])
+	})
+}
+
+func TestJSONSerialization(t *testing.T) {
+	t.Run("ToResponse creates correct response", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено").
+			WithRequestID("req-123").
+			WithDetail("device_id", "dev-456")
+
+		resp := err.ToResponse()
+
+		assert.Equal(t, "device_not_found", resp.Code)
+		assert.Equal(t, "Устройство не найдено", resp.Message)
+		assert.Equal(t, http.StatusNotFound, resp.Status)
+		assert.Equal(t, "req-123", resp.RequestID)
+		assert.Equal(t, "dev-456", resp.Details["device_id"])
+	})
+
+	t.Run("ToJSON returns valid JSON", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено")
+
+		jsonBytes, jsonErr := err.ToJSON()
+
+		assert.NoError(t, jsonErr)
+		assert.Contains(t, string(jsonBytes), "device_not_found")
+		assert.Contains(t, string(jsonBytes), "Устройство не найдено")
+	})
+
+	t.Run("MarshalJSON works correctly", func(t *testing.T) {
+		err := NotFound(errOriginal).WithCode(CodeNotFound)
+
+		jsonBytes, jsonErr := err.MarshalJSON()
+
+		assert.NoError(t, jsonErr)
+		assert.NotEmpty(t, jsonBytes)
+	})
+}
+
+func TestValidationBuilder(t *testing.T) {
+	t.Run("ValidationBuilder creates validation error", func(t *testing.T) {
+		v := NewValidationBuilder()
+		v.AddField("email", "required", "Email обязателен")
+		v.AddField("password", "too_short", "Минимум 8 символов")
+
+		assert.True(t, v.HasErrors())
+
+		err := v.Build()
+		assert.NotNil(t, err)
+		assert.Equal(t, TypeNotValid, err.Type())
+		assert.Equal(t, CodeValidationFailed, err.Code())
+		assert.Len(t, err.Fields(), 2)
+	})
+
+	t.Run("ValidationBuilder returns nil when no errors", func(t *testing.T) {
+		v := NewValidationBuilder()
+
+		assert.False(t, v.HasErrors())
+		assert.Nil(t, v.Build())
+		assert.Nil(t, v.ErrorOrNil())
+	})
+
+	t.Run("ValidationBuilder helper methods", func(t *testing.T) {
+		v := NewValidationBuilder()
+		v.AddRequired("name", "")
+		v.AddInvalidEmail("email", "invalid")
+		v.AddInvalidFormat("phone", "", "+123")
+
+		assert.True(t, v.HasErrors())
+		assert.Len(t, v.Build().Fields(), 3)
+	})
+
+	t.Run("WithField adds field error to AppError", func(t *testing.T) {
+		err := NewValidation("", nil).
+			WithField("email", "required", "Email обязателен").
+			WithFieldValue("age", "out_of_range", "Возраст вне диапазона", 150)
+
+		assert.True(t, err.HasFieldErrors())
+		assert.Len(t, err.Fields(), 2)
+	})
+}
+
+func TestHelperFunctions(t *testing.T) {
+	t.Run("Is checks error type", func(t *testing.T) {
+		err := NotFound(errOriginal)
+
+		assert.True(t, Is(err, TypeNotFound))
+		assert.False(t, Is(err, TypeBadRequest))
+	})
+
+	t.Run("IsCode checks error code", func(t *testing.T) {
+		err := NotFound(errOriginal).WithCode(CodeDeviceNotFound)
+
+		assert.True(t, IsCode(err, CodeDeviceNotFound))
+		assert.False(t, IsCode(err, CodeUserNotFound))
+	})
+
+	t.Run("HasCode checks if code is set", func(t *testing.T) {
+		errWithCode := NotFound(errOriginal).WithCode(CodeDeviceNotFound)
+		errWithoutCode := NotFound(errOriginal)
+
+		assert.True(t, HasCode(errWithCode))
+		assert.False(t, HasCode(errWithoutCode))
+	})
+
+	t.Run("GetCode extracts code", func(t *testing.T) {
+		err := NotFound(errOriginal).WithCode(CodeDeviceNotFound)
+
+		code, ok := GetCode(err)
+		assert.True(t, ok)
+		assert.Equal(t, CodeDeviceNotFound, code)
+	})
+
+	t.Run("GetType extracts type", func(t *testing.T) {
+		err := NotFound(errOriginal)
+
+		errType, ok := GetType(err)
+		assert.True(t, ok)
+		assert.Equal(t, TypeNotFound, errType)
+	})
+
+	t.Run("Wrap wraps regular error", func(t *testing.T) {
+		wrapped := Wrap(errOriginal)
+
+		assert.NotNil(t, wrapped)
+		assert.Equal(t, TypeInternal, wrapped.Type())
+		assert.Equal(t, errOriginal, wrapped.Unwrap())
+	})
+
+	t.Run("Wrap returns nil for nil error", func(t *testing.T) {
+		assert.Nil(t, Wrap(nil))
+	})
+
+	t.Run("Wrap returns AppError unchanged", func(t *testing.T) {
+		original := NotFound(errOriginal)
+		wrapped := Wrap(original)
+
+		assert.Same(t, original, wrapped)
+	})
+
+	t.Run("IsNotFound helper", func(t *testing.T) {
+		assert.True(t, IsNotFound(NotFound(errOriginal)))
+		assert.False(t, IsNotFound(BadRequest(errOriginal)))
+	})
+
+	t.Run("IsUnauthorized helper", func(t *testing.T) {
+		assert.True(t, IsUnauthorized(Unauthorized(errOriginal)))
+		assert.False(t, IsUnauthorized(NotFound(errOriginal)))
+	})
+}
+
+func TestMultiError(t *testing.T) {
+	t.Run("MultiError collects errors", func(t *testing.T) {
+		m := NewMultiError()
+		m.Add(NotFound(errOriginal))
+		m.Add(BadRequest(errOriginal))
+
+		assert.True(t, m.HasErrors())
+		assert.Equal(t, 2, m.Len())
+	})
+
+	t.Run("MultiError.ErrorOrNil returns nil when empty", func(t *testing.T) {
+		m := NewMultiError()
+
+		assert.False(t, m.HasErrors())
+		assert.Nil(t, m.ErrorOrNil())
+	})
+
+	t.Run("MultiError.First and Last", func(t *testing.T) {
+		m := NewMultiError()
+		first := NotFound(errOriginal)
+		last := BadRequest(errOriginal)
+		m.Add(first)
+		m.Add(last)
+
+		assert.Same(t, first, m.First())
+		assert.Same(t, last, m.Last())
+	})
+
+	t.Run("MultiError.Error formats correctly", func(t *testing.T) {
+		m := NewMultiError()
+		m.AddError(errors.New("error 1"))
+		m.AddError(errors.New("error 2"))
+
+		errStr := m.Error()
+		assert.Contains(t, errStr, "error 1")
+		assert.Contains(t, errStr, "error 2")
+	})
+}
+
+func TestStackTrace(t *testing.T) {
+	t.Run("WithStack captures stack", func(t *testing.T) {
+		err := NotFound(errOriginal).WithStack()
+
+		assert.True(t, err.HasStack())
+		assert.NotEmpty(t, err.Stack())
+	})
+
+	t.Run("StackTrace returns formatted string", func(t *testing.T) {
+		err := NotFound(errOriginal).WithStack()
+
+		trace := err.StackTrace()
+		assert.NotEmpty(t, trace)
+		assert.Contains(t, trace, "TestStackTrace")
+	})
+
+	t.Run("StackFrames returns structured frames", func(t *testing.T) {
+		err := NotFound(errOriginal).WithStack()
+
+		frames := err.StackFrames()
+		assert.NotEmpty(t, frames)
+		assert.NotEmpty(t, frames[0].Function)
+		assert.NotEmpty(t, frames[0].File)
+		assert.Greater(t, frames[0].Line, 0)
+	})
+
+	t.Run("Verbose returns detailed info", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено").
+			WithRequestID("req-123").
+			WithDetail("device_id", "dev-456").
+			WithStack()
+
+		verbose := err.Verbose()
+		assert.Contains(t, verbose, "NotFound")
+		assert.Contains(t, verbose, "device_not_found")
+		assert.Contains(t, verbose, "req-123")
+		assert.Contains(t, verbose, "device_id")
+		assert.Contains(t, verbose, "Stack Trace")
+	})
+}
+
+func TestErrorTypeString(t *testing.T) {
+	tests := []struct {
+		errorType ErrorType
+		expected  string
+	}{
+		{TypeUnknown, "Unknown"},
+		{TypeNotValid, "NotValid"},
+		{TypeBadRequest, "BadRequest"},
+		{TypeUnauthorized, "Unauthorized"},
+		{TypeForbidden, "Forbidden"},
+		{TypeNotFound, "NotFound"},
+		{TypeInternal, "Internal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.errorType.String())
+		})
+	}
+}
+
+func TestLogging(t *testing.T) {
+	t.Run("LogFields returns correct fields", func(t *testing.T) {
+		err := NotFound(errOriginal).
+			WithCode(CodeDeviceNotFound).
+			WithMessage("Устройство не найдено").
+			WithRequestID("req-123")
+
+		fields := err.LogFields()
+
+		assert.Equal(t, "NotFound", fields["error_type"])
+		assert.Equal(t, "device_not_found", fields["error_code"])
+		assert.Equal(t, http.StatusNotFound, fields["http_status"])
+		assert.Equal(t, "req-123", fields["request_id"])
+	})
+
+	t.Run("LogValue returns slog.Value", func(t *testing.T) {
+		err := NotFound(errOriginal).WithCode(CodeDeviceNotFound)
+
+		logValue := err.LogValue()
+		assert.NotEmpty(t, logValue.String())
+	})
+}
+
+func TestContext(t *testing.T) {
+	t.Run("FromContext enriches error with context data", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = ContextWithRequestID(ctx, "req-123")
+		ctx = ContextWithUserID(ctx, "user-456")
+
+		err := FromContext(ctx, errOriginal)
+
+		assert.Equal(t, "req-123", err.RequestID())
+		userID, ok := err.Detail("user_id")
+		assert.True(t, ok)
+		assert.Equal(t, "user-456", userID)
+	})
+
+	t.Run("WithContext adds context data to existing error", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = ContextWithRequestID(ctx, "req-789")
+
+		err := NotFound(errOriginal).WithContext(ctx)
+
+		assert.Equal(t, "req-789", err.RequestID())
+	})
+
+	t.Run("RequestIDFromContext extracts request ID", func(t *testing.T) {
+		ctx := ContextWithRequestID(context.Background(), "req-abc")
+
+		assert.Equal(t, "req-abc", RequestIDFromContext(ctx))
+	})
 }
